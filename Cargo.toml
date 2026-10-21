@@ -1,6 +1,6 @@
 [package]
 name = "stdio"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 description = "Terminal output formatting for zega tools"
 license = "MIT"
@@ -20,6 +20,6 @@ include = [
 ]
 
 # No dependencies, deliberately. This crate is linked into publicly distributed
-# binaries; it formats lines and writes them to stderr, and has no capability to
-# do anything else.
+# binaries; it formats lines and writes them to stdout or stderr, and has no
+# capability to do anything else.
 [dependencies]
