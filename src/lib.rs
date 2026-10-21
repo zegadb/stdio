@@ -93,6 +93,15 @@ impl Ink {
     fn rgb(self, (r, g, b): (u8, u8, u8), text: &str) -> String {
         self.paint(&format!("38;2;{r};{g};{b}"), "39", text)
     }
+    fn dim(self, text: &str) -> String {
+        self.paint("2", "22", text)
+    }
+}
+
+/// Whether the terminal takes 24-bit colour (chalk's level 3), as terminals
+/// announce it through COLORTERM.
+fn true_color() -> bool {
+    std::env::var("COLORTERM").is_ok_and(|value| value == "truecolor" || value == "24bit")
 }
 
 // ============================================================
@@ -313,6 +322,211 @@ pub fn note(message: &str) {
 }
 
 // ============================================================
+// The zega logo and the start banner
+// ============================================================
+
+/// The zega logo: four fixed glyphs (z, e, g, a), five rows of block
+/// characters in two tones: ▐ is the shaded left edge of a stroke, █ the
+/// body. Hand-encoded art, so it cannot draw other text.
+const LOGO_ROWS: [&str; 5] = [
+    "▐██████▐██████▐██████▐██████",
+    "   ▐██ ▐██    ▐██    ▐██ ▐██",
+    "  ▐██  ▐████  ▐██ ▐██▐██████",
+    " ▐██   ▐██    ▐██  ▐█▐██ ▐██",
+    "▐██████▐██████▐██████▐██ ▐██",
+];
+/// The logo's greens: VGA bright green (#55FF55) for the body, green
+/// (#00AA00) for the shaded edges.
+const LOGO_MAIN: (u8, u8, u8) = (0x55, 0xff, 0x55);
+const LOGO_SHADE: (u8, u8, u8) = (0x00, 0xaa, 0x00);
+
+fn logo_with(c: Ink, true_color: bool) -> String {
+    let paint = |run: &str| {
+        let body = run.starts_with('█');
+        match (true_color, body) {
+            (true, true) => c.rgb(LOGO_MAIN, run),
+            (true, false) => c.rgb(LOGO_SHADE, run),
+            (false, true) => c.paint("92", "39", run),
+            (false, false) => c.green(run),
+        }
+    };
+    LOGO_ROWS
+        .iter()
+        .map(|row| {
+            // Paint each run of the same block character in its tone.
+            let mut out = String::new();
+            let mut run = String::new();
+            for ch in row.chars() {
+                if !run.is_empty() && (ch == ' ' || !run.starts_with(ch)) {
+                    out.push_str(&paint(&run));
+                    run.clear();
+                }
+                if ch == ' ' {
+                    out.push(' ');
+                } else {
+                    run.push(ch);
+                }
+            }
+            if !run.is_empty() {
+                out.push_str(&paint(&run));
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The zega logo as text, in its two greens when colour is on for stdout.
+pub fn logo() -> String {
+    logo_with(Ink::for_stream(Stream::Out), true_color())
+}
+
+/// Print the zega logo. stdout.
+pub fn banner() {
+    emit(Stream::Out, &logo());
+}
+
+/// One line of the start banner.
+#[derive(Debug, Clone, Default)]
+pub struct BannerEntry {
+    /// Shown in bold, followed by a colon: `Local` prints `Local:`.
+    pub label: String,
+    /// Address, in cyan.
+    pub url: Option<String>,
+    /// State in parentheses after the address, or alone without one.
+    pub status: Option<String>,
+    /// A dimmed line under the entry, e.g. how to start it.
+    pub hint: Option<String>,
+    /// The whole entry dimmed (a secondary address). An entry with no `url`
+    /// is always dimmed.
+    pub dim: bool,
+}
+
+/// What goes on top of the start banner.
+#[derive(Debug, Clone, Default)]
+pub enum Mark {
+    /// The zega logo.
+    #[default]
+    Zega,
+    /// Text drawn with [`ascii`].
+    Title(String),
+    /// A tool's own art, already painted (or plain), e.g. another product's
+    /// logo.
+    Art(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct StartBanner {
+    pub mark: Mark,
+    /// One grey line under the mark.
+    pub tagline: Option<String>,
+    /// What is running where, one line each, labels aligned.
+    pub urls: Vec<BannerEntry>,
+    /// `press <key> to <action>` at the bottom.
+    pub hint: Option<(String, String)>,
+    /// Clear the terminal first; ignored when stdout is not a terminal.
+    pub clear: bool,
+}
+
+fn start_banner_with(c: Ink, true_color: bool, options: &StartBanner) -> String {
+    let rule = "━".repeat(50);
+    let label_width = options
+        .urls
+        .iter()
+        .map(|entry| entry.label.len() + 1)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let mark = match &options.mark {
+        Mark::Zega => logo_with(c, true_color),
+        Mark::Title(title) => ascii_with(c, title),
+        Mark::Art(art) => art.clone(),
+    };
+    let mut lines = vec![String::new(), mark, String::new()];
+    if let Some(tagline) = &options.tagline {
+        lines.push(c.gray(&format!("  {tagline}")));
+        lines.push(String::new());
+    }
+    lines.push(c.gray(&rule));
+    lines.push(String::new());
+    for entry in &options.urls {
+        let quiet = entry.dim || entry.url.is_none();
+        let arrow = if quiet {
+            c.dim("➜")
+        } else {
+            c.rgb(ZEGA_GREEN, "➜")
+        };
+        let name = format!("{:<label_width$}", format!("{}:", entry.label));
+        let label = if entry.dim {
+            c.dim(&name)
+        } else {
+            c.bold(&name)
+        };
+        let mut parts = Vec::new();
+        if let Some(url) = &entry.url {
+            parts.push(if entry.dim { c.dim(url) } else { c.cyan(url) });
+        }
+        if let Some(status) = &entry.status {
+            let status = format!("({status})");
+            parts.push(if entry.dim {
+                c.dim(&status)
+            } else {
+                c.gray(&status)
+            });
+        }
+        lines.push(
+            format!("  {arrow}  {label}{}", parts.join(" "))
+                .trim_end()
+                .to_string(),
+        );
+        if let Some(hint) = &entry.hint {
+            lines.push(format!("     {}", c.dim(hint)));
+        }
+    }
+    lines.push(String::new());
+    lines.push(c.gray(&rule));
+    lines.push(String::new());
+    if let Some((key, action)) = &options.hint {
+        lines.push(format!(
+            "  {} {} {}",
+            c.gray("press"),
+            c.bold(key),
+            c.gray(&format!("to {action}"))
+        ));
+        lines.push(String::new());
+    }
+    lines.join("\n")
+}
+
+/// Print a server start-up banner, in the style of Vite's. stdout.
+///
+/// ```text
+///
+/// <the mark>
+///
+///   tagline
+///
+/// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///
+///   ➜  Local:    http://localhost:5173/
+///   ➜  Explorer: (stopped)
+///      zega start --explorer
+///
+/// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+///
+///   press h to show help
+/// ```
+pub fn start_banner(options: &StartBanner) {
+    if options.clear && std::io::stdout().is_terminal() {
+        print!("\x1b[2J\x1b[H");
+    }
+    emit(
+        Stream::Out,
+        &start_banner_with(Ink::for_stream(Stream::Out), true_color(), options),
+    );
+}
+
+// ============================================================
 // ASCII art (Terrace figlet font)
 // ============================================================
 
@@ -324,9 +538,13 @@ pub fn ascii(text: &str) -> String {
 
 fn ascii_with(c: Ink, text: &str) -> String {
     let font = FigFont::parse(terrace_font::TERRACE_FONT);
-    let art = font
-        .render(text)
-        .unwrap_or_else(|| text.to_string())
+    let rendered = font.render(text).unwrap_or_else(|| text.to_string());
+    // The font's top rows are blank padding: drop them, keep the glyph rows.
+    let art = rendered
+        .lines()
+        .skip_while(|line| line.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
         .trim_end()
         .to_string();
     c.bold(&c.rgb(ZEGA_GREEN, &art))
@@ -483,6 +701,68 @@ mod tests {
         assert!(plain.contains('\n'));
         let painted = ascii_with(COLOR, "zega");
         assert!(painted.starts_with("\x1b[1m\x1b[38;2;60;203;119m"));
+    }
+
+    #[test]
+    fn logo_is_plain_blocks_without_colour_and_two_greens_with_it() {
+        assert_eq!(logo_with(PLAIN, true), LOGO_ROWS.join("\n"));
+        let painted = logo_with(COLOR, true);
+        assert!(painted.contains("\x1b[38;2;85;255;85m██████"));
+        assert!(painted.contains("\x1b[38;2;0;170;0m▐"));
+        assert!(logo_with(COLOR, false).contains("\x1b[92m██████"));
+    }
+
+    #[test]
+    fn start_banner_matches_the_typescript_layout() {
+        let banner = start_banner_with(
+            PLAIN,
+            false,
+            &StartBanner {
+                mark: Mark::Art("ART".into()),
+                tagline: Some("dev server".into()),
+                urls: vec![
+                    BannerEntry {
+                        label: "Local".into(),
+                        url: Some("http://localhost:5173/".into()),
+                        ..Default::default()
+                    },
+                    BannerEntry {
+                        label: "Explorer".into(),
+                        status: Some("stopped".into()),
+                        hint: Some("zega start --explorer".into()),
+                        ..Default::default()
+                    },
+                ],
+                hint: Some(("h".into(), "show help".into())),
+                clear: false,
+            },
+        );
+        let rule = "━".repeat(50);
+        let expected = [
+            "",
+            "ART",
+            "",
+            "  dev server",
+            "",
+            rule.as_str(),
+            "",
+            "  ➜  Local:    http://localhost:5173/",
+            "  ➜  Explorer: (stopped)",
+            "     zega start --explorer",
+            "",
+            rule.as_str(),
+            "",
+            "  press h to show help",
+            "",
+        ]
+        .join("\n");
+        assert_eq!(banner, expected);
+    }
+
+    #[test]
+    fn ascii_drops_the_fonts_blank_top_rows() {
+        let art = ascii_with(PLAIN, "zega");
+        assert!(!art.lines().next().unwrap().trim().is_empty());
     }
 
     #[test]

@@ -45,7 +45,10 @@ glyphs and colours (cyan brackets, red errors, yellow warnings, a green tick,
 grey hints), colour only when the stream is a terminal and never with
 `NO_COLOR`, and the same streams: problems (`error`, `warn`, `warn_simple`,
 `fail`, `diagnostic`) on stderr, everything else on stdout. `ascii` is zega
-green. The crate has no dependencies. The `logf!` and `errorf!` macros take format strings:
+green, and `logo()`/`banner()` draw the zega logo as the TypeScript package
+does. `start_banner(&StartBanner { .. })` prints the same Vite-style start-up
+banner as `startBanner`; its `mark` is the zega logo, an `ascii` title, or a
+tool's own art (`Mark::Art`). The crate has no dependencies. The `logf!` and `errorf!` macros take format strings:
 `stdio::errorf!("build", "{} errors", 3)`.
 
 ## TypeScript
