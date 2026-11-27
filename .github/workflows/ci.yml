@@ -19,7 +19,16 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --locked
+      # The optional telemetry client (docs/telemetry-wire.md), against the fake intake in tests/telemetry.rs.
+      - run: cargo test --locked --features telemetry
+      # The default build stays dependency-free: the crate alone, nothing under it.
+      - name: Default build has no dependencies
+        run: |
+          set -euo pipefail
+          cargo tree --locked -e normal --prefix none | tee tree.txt
+          test "$(wc -l < tree.txt)" -eq 1
 
   typescript:
     name: typescript build and test
@@ -44,5 +53,9 @@ jobs:
         run: |
           set -euo pipefail
           npm pack --dry-run --json --ignore-scripts | jq -r '.[0].files[].path' | sort > packed.txt
-          printf '%s\n' LICENSE README.md dist/font.d.ts dist/font.js dist/index.d.ts dist/index.js package.json src/terrace-font.flf | sort > expected.txt
+          printf '%s\n' LICENSE README.md dist/font.d.ts dist/font.js dist/index.d.ts dist/index.js \
+            dist/telemetry/client.d.ts dist/telemetry/client.js dist/telemetry/index.d.ts dist/telemetry/index.js \
+            dist/telemetry/node.d.ts dist/telemetry/node.js dist/telemetry/scrub.d.ts dist/telemetry/scrub.js \
+            dist/telemetry/wire.d.ts dist/telemetry/wire.js \
+            package.json src/terrace-font.flf | sort > expected.txt
           diff expected.txt packed.txt

@@ -11,8 +11,10 @@ the same idea live in this repository:
 
 `ascii(text)` draws arbitrary text with the same Terrace font in both (`src/terrace-font.flf`). The block-letter zega logo (`banner()`) is TypeScript only.
 
-**They only format text and write it to the terminal.** No files are read or
-written, no network calls are made, and there is no configuration. Colour (TypeScript)
+**By default they only format text and write it to the terminal.** No files are read or
+written, no network calls are made, and there is no configuration. That stays
+true unless you opt in to the separate telemetry client (below): it is a
+separate entry point in TypeScript and a cargo feature, off by default, in Rust. Colour (TypeScript)
 is on only when the terminal supports it; it is off for output that is not a
 terminal and when [`NO_COLOR`](https://no-color.org) is set, which is the one
 environment signal the TypeScript package looks at.
@@ -153,10 +155,122 @@ entry, and `dim` (or having no address) shows the entry dimmed. `tagline` and
 `hint` are optional. The screen is not cleared unless you pass `clear: true`,
 and then only when stdout is a terminal.
 
+## Telemetry (optional)
+
+A client for sending metrics, logs, errors and events from an Addis app or
+service to the Addis telemetry intake, `telemetry.addis.gg`. **It is never on
+by accident**:
+
+- TypeScript: only through its own entry point, `@addiscorp/stdio/telemetry`
+  (and `@addiscorp/stdio/telemetry/node` for the disk spool). The main entry
+  imports none of it; a test bundles the main entry and checks that.
+- Rust: only with the cargo feature `telemetry` (`stdio = { version = "…",
+  features = ["telemetry"] }`). Without it the crate has no dependencies (CI
+  checks `cargo tree`); with it, `ureq` (rustls), `flate2`, `serde_json` and
+  `getrandom`.
+- Nothing is sent until the app creates a client with its **registered**
+  client id and key, in code. Neither is read from the environment.
+
+The wire format is [`docs/telemetry-wire.md`](docs/telemetry-wire.md): JSON
+over HTTPS to `POST /v1/ingest`, short enough to write a Swift or Kotlin
+client from.
+
+### What is sent, and when
+
+Every batch carries the client id and key, and a `resource`: the app's
+release, its platform and OS name and version, a device **class** (`Mac`,
+`iPhone`, never a model number or name), the SDK's name and version, and an
+**install id**: 16 random bytes made on first run, kept by the app, resettable,
+never derived from the hardware or the user. Then the records the app chose
+to capture:
+
+| record | fields |
+|---|---|
+| metric | counter, gauge or histogram; name, value, unit, attributes |
+| log | level, scope, message |
+| error | type, message, stack, fingerprint hint, error code |
+| event | name, attributes |
+
+Each has a timestamp and may carry a trace/span id. Records are batched and
+sent every 10 s, at 100 records, and on `flush()`/shutdown. Attributes whose
+key names a credential, a session or a person (`user.id`, `email`,
+`session_id`, `authorization`, …) are removed before a record is queued, and
+URLs lose their query strings: the same rules the collector applies. A
+`customer-app` client (APS 25 §7) sends less: no logs, errors as type, code
+and fingerprint only, and attributes from a short allowlist.
+
+**Nothing identifying is sent by default.** Identity (the account's `sub`,
+and a device name or email only if the app adds them) is attached only after
+the user approves, and only through `consent.grant(...)`, which returns the
+handle that revokes it. It goes only on records captured while consent is in
+force, with the consent's version and time. `revoke()` takes effect at once,
+even for records already queued, and sends `telemetry.consent.revoked`.
+Identity is never written to disk. Records have no user field to put it in.
+
+**It never gets in the app's way.** Capturing a record never waits for the
+network; a down or slow intake only makes the queue wait. The queue is
+bounded (1,000 records): the oldest are dropped and the count is sent as
+`telemetry.dropped`. Sampling can be set per record type. Retries follow
+`Retry-After` and back off.
+
+### TypeScript
+
+```ts
+import { createTelemetry, installPagehide, localStorageStore } from '@addiscorp/stdio/telemetry'
+
+const telemetry = createTelemetry({
+  client: 'addis-website',          // registered in the collector's projects.json
+  key: TELEMETRY_KEY,               // from `bun run project`, passed in explicitly
+  kind: 'service',                  // or 'customer-app'
+  release: '1.4.2',
+  store: localStorageStore(),       // keeps the install id
+})
+installPagehide(telemetry)          // browsers: sendBeacon when the page is hidden
+
+telemetry.counter('signup.started', 1, { attrs: { 'http.request.method': 'POST' } })
+telemetry.log('info', 'billing', 'invoice sent')
+telemetry.error(err, { code: 'E_SYNC' })
+telemetry.event('screen.view', { screen: 'settings' })
+
+// Only after the user says yes, with the version of the text they approved:
+const consent = telemetry.consent.grant({ version: '2026-11-27', identity: { sub: account.sub } })
+consent.revoke()                    // when they say no again
+```
+
+| runtime | how |
+|---|---|
+| browser | `fetch` with `keepalive`, gzip via `CompressionStream`, `installPagehide` for `sendBeacon`; in memory, `localStorageStore()` for the install id |
+| Cloudflare Workers | `interval: 0`, then `ctx.waitUntil(telemetry.flush())` at the end of a request; no filesystem |
+| Node, Bun | `spool: fileSpool(path)` and `store: fileStore(path)` from `@addiscorp/stdio/telemetry/node`: a capped NDJSON file (4 MiB by default) appended before each capture returns, so a crash or an offline period loses nothing; `flushOnExit(telemetry)` |
+| React Native | in memory, or `spool: kvSpool(AsyncStorage)` and a store of your own; needs `crypto.getRandomValues` (a polyfill such as `react-native-get-random-values`) |
+
+### Rust
+
+```rust
+use std::time::Duration;
+use stdio::telemetry::{Config, Consent, Event, Identity, Kind, Metric, SpoolConfig, Telemetry};
+
+let mut config = Config::new("zega-cli", key, Kind::Service, env!("CARGO_PKG_VERSION"));
+config.spool = Some(SpoolConfig::new(data_dir.join("telemetry.ndjson")));
+config.install_id_path = Some(data_dir.join("install-id"));
+let telemetry = Telemetry::start(config)?;
+
+telemetry.metric(Metric::counter("sync.runs", 1.0).unit("{run}"));
+telemetry.event(Event::new("sync.done").attr("files", 12));
+let consent = telemetry.consent().grant(Consent { version: "2026-11-27".into(), granted_at: None, identity: Identity { sub, device_name: None, email: None } })?;
+consent.revoke();
+telemetry.shutdown(Duration::from_secs(2));
+```
+
+A background thread sends; capturing takes a lock long enough to queue the
+record and append one spool line. Dropping the client flushes for at most
+`shutdown_timeout` (2 s) and never waits out a hung request.
+
 ## Development
 
 ```sh
 cargo test                 # the crate
+cargo test --features telemetry   # and the telemetry client
 bun install
 bun test                   # the TypeScript package
 bun run build              # tsc -> dist/

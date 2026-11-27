@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./telemetry": {
+      "types": "./dist/telemetry/index.d.ts",
+      "import": "./dist/telemetry/index.js"
+    },
+    "./telemetry/node": {
+      "types": "./dist/telemetry/node.d.ts",
+      "import": "./dist/telemetry/node.js"
     }
   },
   "files": [

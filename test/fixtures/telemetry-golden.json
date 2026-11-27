@@ -1,0 +1,223 @@
+{
+  "_comment": "docs/telemetry-wire.md §11. Both clients, given the calls in test/telemetry.test.ts and tests/telemetry.rs (clock fixed at sent_at, random ids install_id then batch), must send these batches. resource.sdk is left out: each client names itself.",
+  "calls": {
+    "counter": {
+      "name": "sync.runs",
+      "value": 1,
+      "unit": "{run}",
+      "attrs": {
+        "http.request.method": "GET",
+        "user.id": "u_123"
+      }
+    },
+    "log": {
+      "level": "info",
+      "scope": "sync",
+      "message": "started"
+    },
+    "error": {
+      "type": "TypeError",
+      "message": "x is undefined",
+      "stack": "TypeError: x is undefined\n    at run (sync.js:1:2)",
+      "fingerprint": "sync-x",
+      "code": "E_SYNC"
+    },
+    "event": {
+      "name": "screen.view",
+      "attrs": {
+        "screen": "settings",
+        "url": "https://ava.example/settings?tab=2#top",
+        "email": "maya@example.com"
+      }
+    },
+    "gauge": {
+      "name": "queue.depth",
+      "value": 3,
+      "trace": {
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "span_id": "00f067aa0ba902b7"
+      }
+    }
+  },
+  "service": {
+    "v": 1,
+    "client": "ava-desktop",
+    "batch": "6f1c0d2a9b3e4f5061728394a5b6c7d8",
+    "sent_at": "2026-11-27T18:04:01.000Z",
+    "resource": {
+      "release": "1.4.2",
+      "platform": "native",
+      "os": {
+        "name": "macOS",
+        "version": "26.1"
+      },
+      "device_class": "Mac",
+      "install_id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "environment": "production"
+    },
+    "records": [
+      {
+        "type": "metric",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "kind": "counter",
+        "name": "sync.runs",
+        "value": 1,
+        "unit": "{run}",
+        "attrs": {
+          "http.request.method": "GET"
+        }
+      },
+      {
+        "type": "log",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "level": "info",
+        "scope": "sync",
+        "message": "started"
+      },
+      {
+        "type": "error",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "error_type": "TypeError",
+        "message": "x is undefined",
+        "stack": "TypeError: x is undefined\n    at run (sync.js:1:2)",
+        "fingerprint": "sync-x",
+        "code": "E_SYNC"
+      },
+      {
+        "type": "event",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "name": "screen.view",
+        "attrs": {
+          "screen": "settings",
+          "url": "https://ava.example/settings"
+        }
+      },
+      {
+        "type": "metric",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "trace": {
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7"
+        },
+        "kind": "gauge",
+        "name": "queue.depth",
+        "value": 3
+      }
+    ]
+  },
+  "customer-app": {
+    "v": 1,
+    "client": "ava-desktop",
+    "batch": "6f1c0d2a9b3e4f5061728394a5b6c7d8",
+    "sent_at": "2026-11-27T18:04:01.000Z",
+    "resource": {
+      "release": "1.4.2",
+      "platform": "native",
+      "os": {
+        "name": "macOS",
+        "version": "26.1"
+      },
+      "device_class": "Mac",
+      "install_id": "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+      "environment": "production"
+    },
+    "records": [
+      {
+        "type": "metric",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "kind": "counter",
+        "name": "sync.runs",
+        "value": 1,
+        "unit": "{run}",
+        "attrs": {
+          "http.request.method": "GET"
+        }
+      },
+      {
+        "type": "error",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "error_type": "TypeError",
+        "fingerprint": "sync-x",
+        "code": "E_SYNC"
+      },
+      {
+        "type": "event",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "name": "screen.view"
+      },
+      {
+        "type": "metric",
+        "ts": "2026-11-27T18:04:01.000Z",
+        "trace": {
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "00f067aa0ba902b7"
+        },
+        "kind": "gauge",
+        "name": "queue.depth",
+        "value": 3
+      }
+    ]
+  },
+  "drop_key": {
+    "cookie": true,
+    "set_cookie": true,
+    "authorization": true,
+    "auth_token": true,
+    "authtoken": true,
+    "auth-token": true,
+    "password": true,
+    "db_passwd": true,
+    "client_secret": true,
+    "api_key": true,
+    "apikey": true,
+    "api-key": true,
+    "access_token": true,
+    "refresh-token": true,
+    "session": true,
+    "session_id": true,
+    "csrf_token": true,
+    "user": true,
+    "User": true,
+    "user.id": true,
+    "user_id": true,
+    "userid": true,
+    "user-name": true,
+    "user.email": true,
+    "userip": true,
+    "user_segment": true,
+    "username": true,
+    "users": false,
+    "user_agent": false,
+    "enduser": true,
+    "enduser.id": true,
+    "email": true,
+    "contact_email": true,
+    "phone": true,
+    "phone_number": true,
+    "ip_address": true,
+    "ip": true,
+    "ipv4": false,
+    "vars": true,
+    "extra": true,
+    "extras": false,
+    "body": true,
+    "body_size": false,
+    "data": true,
+    "database": false,
+    "query_string": true,
+    "query": true,
+    "query_params": true,
+    "queries": false,
+    "cookies": true,
+    "env": true,
+    "environment": false,
+    "dsn": true,
+    "screen": false,
+    "http.request.method": false,
+    "consent.version": false,
+    "reason": false,
+    "url": false,
+    "tokens": false,
+    "secretary": true
+  }
+}
