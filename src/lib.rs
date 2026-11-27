@@ -29,6 +29,10 @@ use std::sync::{Mutex, OnceLock};
 
 mod terrace_font;
 
+/// The optional telemetry client (feature `telemetry`, off by default; docs/telemetry-wire.md).
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+
 #[cfg(target_arch = "wasm32")]
 static CAPTURED_OUTPUT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
